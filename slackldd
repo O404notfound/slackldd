@@ -1,0 +1,102 @@
+#!/usr/bin/bash
+
+
+VERSION=1.0
+PATH=/bin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
+PATH_PACKAGE=/var/log//packages
+SLACKWARE_VERSION=$(cat /etc/slackware-version)
+BINS=''
+LDD=/usr/bin/ldd
+WORKDIR=/var/lib/slackpkg
+PREPO=slackware
+
+PRIORITY=($(ls $WORKDIR/*-filelist.gz | xargs -n1 basename | sed 's/-filelist\.gz$//'))
+
+if [ -z "$ROOT" ]; then
+	ROOT=/
+fi
+
+
+
+cutpkg(){
+    echo "$1" | sed -E 's/-[0-9].*//'
+}
+
+file_search(){
+    local INPUTLIST="$1"
+    local PKGNAMELIST=$(mktemp)
+    local RESULT_LIST=""
+
+    for i in "${PRIORITY[@]}"; do
+        FILELIST="${WORKDIR}/${i}-filelist.gz"
+        if [ -f "$FILELIST" ]; then
+	    PKGS=$(zgrep "$INPUTLIST" "$FILELIST" | awk '{print $1}' | xargs -r -n1 basename)
+
+            for FULLNAME in $PKGS ; do
+                NAME=$(cutpkg "$FULLNAME")
+
+                if ! grep -q "^${NAME}$" "$PKGNAMELIST"; then
+                    echo "$NAME" >> "$PKGNAMELIST"
+                    echo "$FULLNAME in $i"
+                    RESULT_LIST="$RESULT_LIST $FULLNAME"
+                fi
+            done
+        fi
+    done
+
+    rm -f "$PKGNAMELIST"
+}
+
+
+
+ldd_check(){
+	TMP_FILE=''
+	for st in "$@";do
+		if [[ "$st" != "$TMP_FILE" ]];then
+			TMP_FILE="$st"
+			#echo "[INFO] FILE:$st"
+		fi
+		$LDD $ROOT/$st | grep "not found" | awk '{print $1}'
+	done
+}
+
+string_winding(){
+	for st in "$@";do
+		case $st in
+			usr/bin)
+				;;
+			usr/local/bin)
+				;;
+			usr/bin/)
+				;;
+			usr/local/bin/)
+				;;
+			*)
+				BINS="$BINS $st"
+				;;	
+		esac
+	done
+		echo "$BINS"
+}
+
+main(){
+	BIN=""
+	if test -f  "$(ls $PATH_PACKAGE/$1*)";then
+		BIN=$(cat $PATH_PACKAGE/$1* | grep "bin")
+		BINS=$(string_winding $BIN)
+		TMP=$(ldd_check $BINS)
+		for st in $TMP;do
+			TMPI="$(file_search $st)"
+			if [[ "$TMPI" ]];then
+				echo "$st --> $TMPI"
+			else
+				echo "$st is not packages"
+			fi
+			
+		done
+	fi 
+}
+
+
+
+main $@
