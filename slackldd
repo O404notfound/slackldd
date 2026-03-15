@@ -17,6 +17,16 @@ if [ -z "$ROOT" ]; then
 fi
 
 
+help(){
+	if [[ "$1" == "h" ]];then
+		echo "slackldd [-v] package"
+	elif [[ "$1" == "v" ]];then
+		echo "slackldd version: $VERSION"
+	else
+		echo error
+	fi
+}
+
 
 cutpkg(){
     echo "$1" | sed -E 's/-[0-9].*//'
@@ -56,33 +66,31 @@ ldd_check(){
 			TMP_FILE="$st"
 			#echo "[INFO] FILE:$st"
 		fi
-		$LDD $ROOT/$st | grep "not found" | awk '{print $1}'
+		$LDD "$ROOT/$st" 2>/dev/null | awk '/not found/ {print $1}'
 	done
 }
 
 string_winding(){
 	for st in "$@";do
-		case $st in
-			usr/bin)
-				;;
-			usr/local/bin)
-				;;
-			usr/bin/)
-				;;
-			usr/local/bin/)
-				;;
-			*)
-				BINS="$BINS $st"
-				;;	
-		esac
+		if [[ "${st: -1}" != "/" ]];then
+			BINS="$BINS $st"
+		fi
 	done
 		echo "$BINS"
 }
 
 main(){
+	if [[ "$@" == "-h" ]];then
+		help h
+		exit
+	elif [[ "$@" == "-v" ]];then
+		help v
+		exit
+	fi
+	
 	BIN=""
-	if test -f  "$(ls $PATH_PACKAGE/$1*)";then
-		BIN=$(cat $PATH_PACKAGE/$1* | grep "bin")
+	if test -f  "$(ls $PATH_PACKAGE/*$1*)";then
+		BIN=$(cat "$PATH_PACKAGE/*$1*" | grep "bin")
 		BINS=$(string_winding $BIN)
 		TMP=$(ldd_check $BINS)
 		for st in $TMP;do
