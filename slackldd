@@ -13,7 +13,7 @@ PREPO=slackware
 PRIORITY=($(ls $WORKDIR/*-filelist.gz | xargs -n1 basename | sed 's/-filelist\.gz$//'))
 
 if [ -z "$ROOT" ]; then
-	ROOT=/
+	ROOT="/"
 fi
 
 
@@ -23,7 +23,7 @@ help(){
 	elif [[ "$1" == "v" ]];then
 		echo "slackldd version: $VERSION"
 	else
-		echo error
+		echo "error"
 	fi
 }
 
@@ -36,17 +36,18 @@ file_search(){
     local INPUTLIST="$1"
     local PKGNAMELIST=$(mktemp)
     local RESULT_LIST=""
+    if [[ "${5}" == "[INFO]" ]];then
+		echo "$@"
+    fi
 
     for i in "${PRIORITY[@]}"; do
         FILELIST="${WORKDIR}/${i}-filelist.gz"
         if [ -f "$FILELIST" ]; then
 	    PKGS=$(zgrep "$INPUTLIST" "$FILELIST" | awk '{print $1}' | xargs -r -n1 basename)
-
             for FULLNAME in $PKGS ; do
                 NAME=$(cutpkg "$FULLNAME")
-
                 if ! grep -q "^${NAME}$" "$PKGNAMELIST"; then
-                    echo "$NAME" >> "$PKGNAMELIST"
+					echo "$NAME" >> "$PKGNAMELIST"
                     echo "$FULLNAME in $i"
                     RESULT_LIST="$RESULT_LIST $FULLNAME"
                 fi
@@ -62,10 +63,6 @@ file_search(){
 ldd_check(){
 	TMP_FILE=''
 	for st in "$@";do
-		if [[ "$st" != "$TMP_FILE" ]];then
-			TMP_FILE="$st"
-			#echo "[INFO] FILE:$st"
-		fi
 		$LDD "$ROOT/$st" 2>/dev/null | awk '/not found/ {print $1}'
 	done
 }
@@ -73,14 +70,14 @@ ldd_check(){
 string_winding(){
 	for st in "$@";do
 		if [[ "${st: -1}" != "/" ]];then
-			BINS="$BINS $st"
+			echo "$BINS $st"
 		fi
 	done
-		echo "$BINS"
+		#echo "$BINS"
 }
 
 main(){
-	if [[ "$@" == "-h" ]];then
+	if [[ "$@" == "-h" || "$@" == "" ]];then
 		help h
 		exit
 	elif [[ "$@" == "-v" ]];then
@@ -89,19 +86,30 @@ main(){
 	fi
 	
 	BIN=""
-	if test -f  "$(ls $PATH_PACKAGE/*$1*)";then
-		BIN=$(cat "$PATH_PACKAGE/*$1*" | grep "bin")
+	if [[ $(ls $PATH_PACKAGE/*"$1"* 2> /dev/null) ]];then
+		PACKAGE_FULL_PATH=$(ls $PATH_PACKAGE/*"$1"*)
+		PACKAGE_NAME=${PACKAGE_FULL_PATH: 19}
+		echo "found package: $PACKAGE_NAME"
+		BIN=$(cat $PACKAGE_FULL_PATH | grep "bin")
 		BINS=$(string_winding $BIN)
-		TMP=$(ldd_check $BINS)
-		for st in $TMP;do
-			TMPI="$(file_search $st)"
-			if [[ "$TMPI" ]];then
-				echo "$st --> $TMPI"
-			else
-				echo "$st is not packages"
-			fi
+
+		
+		for st in $(echo "$BINS" | tr "\n" " ");do
+			echo "binary: ${st:8}"
+		
+			TMP=$(ldd_check $st)
+			for st1 in $TMP;do
 			
+				TMPI="$(file_search $st1)"
+				if [[ "$TMPI" ]];then
+					echo "$st1 --> $TMPI"
+				else
+					echo "$st1 is not packages"
+				fi
+			done
 		done
+	else
+		echo "packages $1 not found "
 	fi 
 }
 
