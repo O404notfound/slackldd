@@ -87,9 +87,12 @@ main(){
 	
 	BIN=""
 	if [[ $(ls $PATH_PACKAGE/*"$1"* 2> /dev/null) ]];then
-		PACKAGE_FULL_PATH=$(ls $PATH_PACKAGE/*"$1"*)
-		PACKAGE_NAME=${PACKAGE_FULL_PATH: 19}
-		echo "found package: $PACKAGE_NAME"
+		PACKAGE_FULL_PATH=$(ls $PATH_PACKAGE/*"$1"* | tr "\n" " ")
+
+		for name in $(echo "$PACKAGE_FULL_PATH" | tr "\n" " ");do 
+			echo "found package: ${name: 19}"
+		done
+		
 		BIN=$(cat $PACKAGE_FULL_PATH | grep "bin")
 		BINS=$(string_winding $BIN)
 

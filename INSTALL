@@ -1,0 +1,6 @@
+install:
+make install
+remove/uninstall:
+make remove
+or
+make uninstall
