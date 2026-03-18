@@ -5,7 +5,6 @@ VERSION=1.0
 PATH=/bin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
 PATH_PACKAGE=/var/log//packages
 SLACKWARE_VERSION=$(cat /etc/slackware-version)
-BINS=''
 LDD=/usr/bin/ldd
 WORKDIR=/var/lib/slackpkg
 PREPO=slackware
@@ -25,6 +24,7 @@ help(){
 	else
 		echo "error"
 	fi
+	exit
 }
 
 
@@ -48,7 +48,11 @@ file_search(){
                 NAME=$(cutpkg "$FULLNAME")
                 if ! grep -q "^${NAME}$" "$PKGNAMELIST"; then
 					echo "$NAME" >> "$PKGNAMELIST"
-                    echo "$FULLNAME in $i"
+					if [[ "$PACKAGE_ONLY" == "1" ]];then
+						echo "$FULLNAME"
+                    else
+						echo -e "$FULLNAME in $i"
+                    fi
                     RESULT_LIST="$RESULT_LIST $FULLNAME"
                 fi
             done
@@ -73,24 +77,64 @@ string_winding(){
 			echo "$BINS $st"
 		fi
 	done
-		#echo "$BINS"
 }
 
+find_package(){
+	not_found_package=()
+	for st in ${main_arg[@]}; do
+		FILE=("$PATH_PACKAGE"/*"$st"*)
+		if [[ -f "${FILE[0]}" ]];then
+			package+=("${FILE[0]}")
+		else
+			not_found_package+=("$st")
+		fi
+	done
+}
+
+
+not_found_package=()
+package=()
+main_arg=()
 main(){
-	if [[ "$@" == "-h" || "$@" == "" ]];then
+	shopt -s nullglob
+	BINS=""
+	BIN=""
+	if [[ "$@" == "" ]];then
 		help h
-		exit
-	elif [[ "$@" == "-v" ]];then
-		help v
-		exit
 	fi
 	
-	BIN=""
-	if [[ $(ls $PATH_PACKAGE/*"$1"* 2> /dev/null) ]];then
-		PACKAGE_FULL_PATH=$(ls $PATH_PACKAGE/*"$1"* | tr "\n" " ")
+	for tmp_main_arg in "$@";do
+		case $tmp_main_arg in
+			'')
+				help h
+				;;
+			-h | '')
+				help h
+				;;
+			-v)
+				help v
+				;;
+			-p)
+				PACKAGE_ONLY=1
+				;;
+			*)
+				main_arg+=("$tmp_main_arg")
+		esac
+	done
+	
+
+	
+	find_package
+	for package_not_found in ${not_found_package[@]};do
+		echo "package $package_not_found not found"
+	done
+	
+	for arg in $package;do
+		PACKAGE_FULL_PATH="${arg}"
+		PACKAGE_NAME=${PACKAGE_FULL_PATH: 19}
 
 		for name in $(echo "$PACKAGE_FULL_PATH" | tr "\n" " ");do 
-			echo "found package: ${name: 19}"
+			echo "found package: ${name:19}"
 		done
 		
 		BIN=$(cat $PACKAGE_FULL_PATH | grep "bin")
@@ -101,19 +145,20 @@ main(){
 			echo "binary: ${st:8}"
 		
 			TMP=$(ldd_check $st)
-			for st1 in $TMP;do
-			
+			for st1 in $TMP;do		
 				TMPI="$(file_search $st1)"
 				if [[ "$TMPI" ]];then
-					echo "$st1 --> $TMPI"
+					if [[ "$PACKAGE_ONLY" == "1" ]];then
+						echo "$TMPI"
+					else
+						echo -e "\t$st1 --> $TMPI"
+					fi
 				else
-					echo "$st1 is not packages"
+					echo -e "\t$st1 is not packages"
 				fi
 			done
 		done
-	else
-		echo "packages $1 not found "
-	fi 
+	done
 }
 
 
