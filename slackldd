@@ -19,6 +19,8 @@ fi
 help(){
 	if [[ "$1" == "h" ]];then
 		echo "slackldd [-v] package"
+	elif [[ "$1" == "arg_error" ]];then
+		echo "invalid argument: $2"
 	elif [[ "$1" == "v" ]];then
 		echo "slackldd version: $VERSION"
 	else
@@ -53,7 +55,6 @@ file_search(){
                     else
 						echo -e "$FULLNAME in $i"
                     fi
-                    RESULT_LIST="$RESULT_LIST $FULLNAME"
                 fi
             done
         fi
@@ -65,15 +66,20 @@ file_search(){
 
 
 ldd_check(){
-	TMP_FILE=''
 	for st in "$@";do
 		$LDD "$ROOT/$st" 2>/dev/null | awk '/not found/ {print $1}'
 	done
 }
 
+check_exe() {
+	if [[ -x "$ROOT/$1" ]] && [[ -f "$ROOT/$1" ]]; then
+		return 0
+	fi
+	return 1
+}
 string_winding(){
 	for st in "$@";do
-		if [[ "${st: -1}" != "/" ]];then
+		if check_exe "$st";then
 			echo "$BINS $st"
 		fi
 	done
@@ -88,7 +94,7 @@ find_package(){
 		else
 			not_found_package+=("$st")
 		fi
-	done
+	done	
 }
 
 
@@ -104,24 +110,21 @@ main(){
 	fi
 	
 	for tmp_main_arg in "$@";do
-		case $tmp_main_arg in
-			'')
-				help h
-				;;
-			-h | '')
-				help h
-				;;
-			-v)
-				help v
-				;;
-			-p)
-				PACKAGE_ONLY=1
-				;;
-			*)
-				main_arg+=("$tmp_main_arg")
-		esac
+		if [[ "$tmp_main_arg" == "-h" ]];then
+			help h
+		elif [[ "$tmp_main_arg" == "-v" ]];then
+			help v
+		elif [[ "$tmp_main_arg" == "-p" ]];then
+			PACKAGE_ONLY=1
+			continue
+		else
+			if [[ "${tmp_main_arg::1}" == "-" ]];then
+				help arg_error $tmp_main_arg
+			fi	
+		fi
+		main_arg+=("$tmp_main_arg")
 	done
-	
+		
 
 	
 	find_package
@@ -131,10 +134,9 @@ main(){
 	
 	for arg in $package;do
 		PACKAGE_FULL_PATH="${arg}"
-		PACKAGE_NAME=${PACKAGE_FULL_PATH: 19}
-
+		PACKAGE_NAME=$(basename $PACKAGE_FULL_PATH)
 		for name in $(echo "$PACKAGE_FULL_PATH" | tr "\n" " ");do 
-			echo "found package: ${name:19}"
+			echo "found package: $(basename $name)"
 		done
 		
 		BIN=$(cat $PACKAGE_FULL_PATH | grep "bin")
@@ -142,7 +144,7 @@ main(){
 
 		
 		for st in $(echo "$BINS" | tr "\n" " ");do
-			echo "binary: ${st:8}"
+			echo "binary: $(basename $st)"
 		
 			TMP=$(ldd_check $st)
 			for st1 in $TMP;do		
@@ -151,7 +153,7 @@ main(){
 					if [[ "$PACKAGE_ONLY" == "1" ]];then
 						echo "$TMPI"
 					else
-						echo -e "\t$st1 --> $TMPI"
+						echo -e "\t$st1 --> $(echo "$TMPI" | sed ':a;N;$!ba;s/\n/ and /g')"
 					fi
 				else
 					echo -e "\t$st1 is not packages"
