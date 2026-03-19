@@ -1,24 +1,35 @@
 #!/usr/bin/bash
 
-
+#info
 VERSION=1.0
-PATH=/bin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
-PATH_PACKAGE=/var/log//packages
-SLACKWARE_VERSION=$(cat /etc/slackware-version)
-LDD=/usr/bin/ldd
-WORKDIR=/var/lib/slackpkg
+
+#env and path
+if [ -z "$ROOT" ]; then ROOT="/";fi
+PATH=$ROOT/bin:$ROOT/usr/bin:$ROOT/usr/sbin:$ROOT/usr/local/bin:$ROOT/usr/local/sbin
+PATH_PACKAGE=$ROOT/var/log/packages
+SLACKWARE_VERSION=$(cat $ROOT/etc/slackware-version)
+if [ -z "$LDD" ];then LDD=$ROOT/usr/bin/ldd;fi
+WORKDIR=$ROOT/var/lib/slackpkg
 PREPO=slackware
+
+#time
+NO_TIME=0
+SECONDS=0
+D=0
+H=0
+M=0
+str_time_conting=""
+
 
 PRIORITY=($(ls $WORKDIR/*-filelist.gz | xargs -n1 basename | sed 's/-filelist\.gz$//'))
 
-if [ -z "$ROOT" ]; then
-	ROOT="/"
-fi
+
+
 
 
 help(){
 	if [[ "$1" == "h" ]];then
-		echo "slackldd [-v] package"
+		echo "slackldd [-v] [-t] package"
 	elif [[ "$1" == "arg_error" ]];then
 		echo "invalid argument: $2"
 	elif [[ "$1" == "v" ]];then
@@ -30,6 +41,32 @@ help(){
 }
 
 
+counting_time(){
+	while [[ $SECONDS -ge 60 ]];do
+		((m++))
+		((SECONDS -= 60))
+	done
+	while [[ $m -ge 60 ]];do
+		((h++))
+		(($m -= 60))
+	done
+	while [[ $h -ge 24 ]];do
+		((d++))
+		((h -= 24))
+	done
+	str_time_conting="sec:$SECONDS"
+	if [[ -n $m && $m -ge 1 ]];then
+		str_time_conting="$str_time_conting min: $m"
+	fi
+	if [[ -n $h && $h -ge 1 ]];then
+		str_time_conting="$str_time_conting hour: $h"
+	fi
+	if [[ -n $d && $d -ge 1 ]];then
+		str_time_conting="$str_time_conting day: $d"
+	fi
+	echo "$str_time_conting"
+}
+
 cutpkg(){
     echo "$1" | sed -E 's/-[0-9].*//'
 }
@@ -38,14 +75,11 @@ file_search(){
     local INPUTLIST="$1"
     local PKGNAMELIST=$(mktemp)
     local RESULT_LIST=""
-    if [[ "${5}" == "[INFO]" ]];then
-		echo "$@"
-    fi
 
     for i in "${PRIORITY[@]}"; do
         FILELIST="${WORKDIR}/${i}-filelist.gz"
         if [ -f "$FILELIST" ]; then
-	    PKGS=$(zgrep "$INPUTLIST" "$FILELIST" | awk '{print $1}' | xargs -r -n1 basename)
+	    PKGS=$(zcat "$FILELIST" | grep "$INPUTLIST" | awk '{print $1}' | xargs -r -n1 basename)
             for FULLNAME in $PKGS ; do
                 NAME=$(cutpkg "$FULLNAME")
                 if ! grep -q "^${NAME}$" "$PKGNAMELIST"; then
@@ -98,6 +132,32 @@ find_package(){
 }
 
 
+filter_arg(){
+    local -A seen
+    for i in "${!main_arg[@]}"; do
+        local val="${main_arg[$i]}"
+        if [[ -n "${seen[$val]}" ]]; then
+            unset "main_arg[$i]" 
+        else
+            seen[$val]=1 
+        fi
+    done
+    main_arg=("${main_arg[@]}") # Схлопываем массив обратно
+}
+
+
+filter_arg_str(){
+	local tmp_main_arg="$@"
+	local main_arg_return=()
+	for st in $tmp_main_arg;do
+		if [[ "$tmp_main_arg" == *"$st"* ]];then
+			main_arg_return+=("$st")
+		fi
+	done
+	echo "${main_arg_return[@]}"
+}
+
+
 not_found_package=()
 package=()
 main_arg=()
@@ -114,6 +174,8 @@ main(){
 			help h
 		elif [[ "$tmp_main_arg" == "-v" ]];then
 			help v
+		elif [[ "$tmp_main_arg" == "-t" ]];then
+			NO_TIME=1
 		elif [[ "$tmp_main_arg" == "-p" ]];then
 			PACKAGE_ONLY=1
 			continue
@@ -123,8 +185,10 @@ main(){
 			fi
 			main_arg+=("$tmp_main_arg")
 		fi
-	done
-		
+	done 
+	filter_arg
+	
+	echo ${main_arg[@]}
 	
 	find_package
 	for package_not_found in ${not_found_package[@]};do
@@ -137,7 +201,7 @@ main(){
 		for name in $(echo "$PACKAGE_FULL_PATH" | tr "\n" " ");do 
 			echo "found package: $(basename $name)"
 		done
-		
+		BINS=""
 		BIN=$(cat $PACKAGE_FULL_PATH | grep "bin")
 		BINS=$(string_winding $BIN)
 
@@ -146,7 +210,8 @@ main(){
 			echo "binary: $(basename $st)"
 		
 			TMP=$(ldd_check $st)
-			for st1 in $TMP;do		
+			TMP=$(filter_arg_str $TMP)
+			for st1 in $TMP;do
 				TMPI="$(file_search $st1)"
 				if [[ "$TMPI" ]];then
 					if [[ "$PACKAGE_ONLY" == "1" ]];then
@@ -160,6 +225,9 @@ main(){
 			done
 		done
 	done
+	if [ "$NO_TIME" == "0" ];then
+		echo "Time: $(counting_time)"
+	fi
 }
 
 
