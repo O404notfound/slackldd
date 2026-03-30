@@ -38,20 +38,11 @@ help(){
 
 
 counting_time(){
-	local m h d 
+	local m=0 h=0 d=0
 	local str_time_conting=""
-	while [[ $SECONDS -ge 60 ]];do
-		((m++))
-		((SECONDS -= 60))
-	done
-	while [[ $m -ge 60 ]];do
-		((h++))
-		(($m -= 60))
-	done
-	while [[ $h -ge 24 ]];do
-		((d++))
-		((h -= 24))
-	done
+	m=$(( (SECONDS / 60) % 60 ))
+	h=$(( (SECONDS / 3600) % 24 ))
+	s=$(( SECONDS % 60 ))
 	str_time_conting="sec:$SECONDS"
 	[[ -n $m && $m -ge 1 ]] && str_time_conting="$str_time_conting min: $m"
 	[[ -n $h && $h -ge 1 ]] && str_time_conting="$str_time_conting hour: $h"
@@ -63,8 +54,6 @@ counting_time(){
 cutpkg(){
     echo "$1" | sed -E 's/-[0-9].*//'
 }
-
-
 
 
 file_search(){
@@ -81,9 +70,9 @@ file_search(){
                 if ! grep -q "^${NAME}$" "$PKGNAMELIST"; then
 					echo "$NAME" >> "$PKGNAMELIST"
 					if [[ "$PACKAGE_ONLY" == "1" ]];then
-						echo "$FULLNAME"
+						echo -e "${FULLNAME%.*}"
                     else
-						echo -e "$FULLNAME in $i"
+						echo -e "${FULLNAME%.*} in $i"
                     fi
                 fi
             done
@@ -115,10 +104,7 @@ string_winding(){
 	done
 }
      
-     
-     
-     
-     
+
 
 find_package() {
     package=()
@@ -190,20 +176,20 @@ main(){
 			fi
 			main_arg+=("$tmp_main_arg")
 		fi
-	done 
+	done
 	filter_arg
 	
 	
 	find_package
-	for package_not_found in ${not_found_package[@]};do
+	[[ "$PACKAGE_ONLY" != "1" ]] && for package_not_found in ${not_found_package[@]};do
 		echo "package $package_not_found not found"
 	done
 	
-	for arg in ${package[@]};do
+	for arg in "${package[@]}";do
 		if [[ -f "$arg" ]]; then
 			PACKAGE_FULL_PATH="${arg}"
 			PACKAGE_NAME=$(basename $PACKAGE_FULL_PATH)
-			for name in $(echo "$PACKAGE_FULL_PATH" | tr "\n" " ");do 
+			[[ "$PACKAGE_ONLY" != "1" ]] && for name in $(echo "$PACKAGE_FULL_PATH" | tr "\n" " " );do 
 				echo "found package: $(basename $name)"
 			done
 			BINS=""
@@ -212,7 +198,7 @@ main(){
 
 		
 			for st in $(echo "$BINS" | tr "\n" " ");do
-				echo "binary: $(basename $st)"
+				[[ "$PACKAGE_ONLY" != "1" ]] && echo "binary: $(basename $st)"
 		
 				TMP=$(ldd_check $st)
 				for st1 in $TMP;do
@@ -224,19 +210,14 @@ main(){
 							echo -e "\t$st1 --> $(echo "$TMPI" | sed ':a;N;$!ba;s/\n/ and /g')"
 						fi
 					else
-						echo -e "\t$st1 is not packages"
+						[[ "$PACKAGE_ONLY" != "1" ]] && echo -e "\t$st1 is not packages"
 					fi
 				done
 			done
 		fi
 	done
-	if [ "$NO_TIME" == "0" ];then
-		echo "Time: $(counting_time)"
-	fi
+	[ "$NO_TIME" == "0" ] && echo "Time: $(counting_time)"
 }
-
-
-
 
 
 
