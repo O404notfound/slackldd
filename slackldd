@@ -37,18 +37,20 @@ help(){
 }
 
 
-counting_time(){
-	local m=0 h=0 d=0
-	local str_time_conting=""
-	m=$(( (SECONDS / 60) % 60 ))
-	h=$(( (SECONDS / 3600) % 24 ))
-	s=$(( SECONDS % 60 ))
-	str_time_conting="sec:$SECONDS"
-	[[ -n $m && $m -ge 1 ]] && str_time_conting="$str_time_conting min: $m"
-	[[ -n $h && $h -ge 1 ]] && str_time_conting="$str_time_conting hour: $h"
-	[[ -n $d && $d -ge 1 ]] && str_time_conting="$str_time_conting day: $d"
-	
-	echo "$str_time_conting"
+counting_time() {
+    local m h d s
+    local result=""
+
+    d=$(( SECONDS / 86400 ))
+    h=$(( (SECONDS / 3600) % 24 ))
+    m=$(( (SECONDS / 60) % 60 ))
+    s=$(( SECONDS % 60 ))
+    (( d > 0 )) && result+="day: $d "
+    (( h > 0 )) && result+="hour: $h "
+    (( m > 0 )) && result+="min: $m "
+    result+="sec: $s"
+
+    echo "$result"
 }
 
 cutpkg(){
@@ -189,7 +191,7 @@ main(){
 		if [[ -f "$arg" ]]; then
 			PACKAGE_FULL_PATH="${arg}"
 			PACKAGE_NAME=$(basename $PACKAGE_FULL_PATH)
-			[[ "$PACKAGE_ONLY" != "1" ]] && for name in $(echo "$PACKAGE_FULL_PATH" | tr "\n" " " );do 
+			[[ "$PACKAGE_ONLY" != "1" ]] && for name in $(echo "$PACKAGE_FULL_PATH");do 
 				echo "found package: $(basename $name)"
 			done
 			BINS=""
