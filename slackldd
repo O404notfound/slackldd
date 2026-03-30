@@ -4,21 +4,17 @@
 VERSION=1.0
 
 #env and path
-if [ -z "$ROOT" ]; then ROOT="/";fi
+[ -z "$ROOT" ] && ROOT="/"
 PATH=$ROOT/bin:$ROOT/usr/bin:$ROOT/usr/sbin:$ROOT/usr/local/bin:$ROOT/usr/local/sbin
 PATH_PACKAGE=$ROOT/var/log/packages
 SLACKWARE_VERSION=$(cat $ROOT/etc/slackware-version)
-if [ -z "$LDD" ];then LDD=$ROOT/usr/bin/ldd;fi
+[ -z "$LDD" ] && LDD=$ROOT/usr/bin/ldd
 WORKDIR=$ROOT/var/lib/slackpkg
-PREPO=slackware
+PREPO=slackware	
 
 #time
 NO_TIME=0
 SECONDS=0
-D=0
-H=0
-M=0
-str_time_conting=""
 
 
 PRIORITY=($(ls $WORKDIR/*-filelist.gz | xargs -n1 basename | sed 's/-filelist\.gz$//'))
@@ -42,6 +38,8 @@ help(){
 
 
 counting_time(){
+	local m h d 
+	local str_time_conting=""
 	while [[ $SECONDS -ge 60 ]];do
 		((m++))
 		((SECONDS -= 60))
@@ -55,21 +53,19 @@ counting_time(){
 		((h -= 24))
 	done
 	str_time_conting="sec:$SECONDS"
-	if [[ -n $m && $m -ge 1 ]];then
-		str_time_conting="$str_time_conting min: $m"
-	fi
-	if [[ -n $h && $h -ge 1 ]];then
-		str_time_conting="$str_time_conting hour: $h"
-	fi
-	if [[ -n $d && $d -ge 1 ]];then
-		str_time_conting="$str_time_conting day: $d"
-	fi
+	[[ -n $m && $m -ge 1 ]] && str_time_conting="$str_time_conting min: $m"
+	[[ -n $h && $h -ge 1 ]] && str_time_conting="$str_time_conting hour: $h"
+	[[ -n $d && $d -ge 1 ]] && str_time_conting="$str_time_conting day: $d"
+	
 	echo "$str_time_conting"
 }
 
 cutpkg(){
     echo "$1" | sed -E 's/-[0-9].*//'
 }
+
+
+
 
 file_search(){
     local INPUTLIST="$1"
@@ -118,19 +114,39 @@ string_winding(){
 		fi
 	done
 }
+     
+     
+     
+     
+     
 
-find_package(){
-	not_found_package=()
-	for st in ${main_arg[@]}; do
-		FILE=("$PATH_PACKAGE"/*"$st"*)
-		if [[ -f "${FILE[0]}" ]];then
-			package+=("${FILE[0]}")
-		else
-			not_found_package+=("$st")
-		fi
-	done	
+find_package() {
+    package=()
+    not_found_package=()
+    local PENDING=("${main_arg[@]}")
+
+    for i in "${PRIORITY[@]}"; do
+        [[ ${#PENDING[@]} -eq 0 ]] && break
+        local FILELIST="${WORKDIR}/${i}-filelist.gz"
+        [[ ! -f "$FILELIST" ]] && continue
+
+        local NEXT_PENDING=()
+        for st in "${PENDING[@]}"; do
+            if zgrep -qFm1 "$st" "$FILELIST"; then
+                local ACTUAL_LOG=( "$PATH_PACKAGE/$st"-* )
+                if [[ -f "${ACTUAL_LOG[0]}" ]]; then
+                    package+=("${ACTUAL_LOG[0]}") 
+                else
+                    package+=("$st") 
+                fi
+            else
+                NEXT_PENDING+=("$st")
+            fi
+        done
+        PENDING=("${NEXT_PENDING[@]}")
+    done
+    not_found_package=("${PENDING[@]}")
 }
-
 
 filter_arg(){
     local -A seen
@@ -139,23 +155,12 @@ filter_arg(){
         if [[ -n "${seen[$val]}" ]]; then
             unset "main_arg[$i]" 
         else
-            seen[$val]=1 
+            seen[$val]=1
         fi
     done
-    main_arg=("${main_arg[@]}") # Схлопываем массив обратно
+    main_arg=("${main_arg[@]}") 
 }
 
-
-filter_arg_str(){
-	local tmp_main_arg="$@"
-	local main_arg_return=()
-	for st in $tmp_main_arg;do
-		if [[ "$tmp_main_arg" == *"$st"* ]];then
-			main_arg_return+=("$st")
-		fi
-	done
-	echo "${main_arg_return[@]}"
-}
 
 
 not_found_package=()
@@ -188,7 +193,6 @@ main(){
 	done 
 	filter_arg
 	
-	echo ${main_arg[@]}
 	
 	find_package
 	for package_not_found in ${not_found_package[@]};do
@@ -196,39 +200,43 @@ main(){
 	done
 	
 	for arg in ${package[@]};do
-		PACKAGE_FULL_PATH="${arg}"
-		PACKAGE_NAME=$(basename $PACKAGE_FULL_PATH)
-		for name in $(echo "$PACKAGE_FULL_PATH" | tr "\n" " ");do 
-			echo "found package: $(basename $name)"
-		done
-		BINS=""
-		BIN=$(cat $PACKAGE_FULL_PATH | grep "bin")
-		BINS=$(string_winding $BIN)
+		if [[ -f "$arg" ]]; then
+			PACKAGE_FULL_PATH="${arg}"
+			PACKAGE_NAME=$(basename $PACKAGE_FULL_PATH)
+			for name in $(echo "$PACKAGE_FULL_PATH" | tr "\n" " ");do 
+				echo "found package: $(basename $name)"
+			done
+			BINS=""
+			BIN=$(grep -E '^usr/(bin|sbin)/|^bin/|^sbin/' "$arg")
+			BINS=$(string_winding $BIN)
 
 		
-		for st in $(echo "$BINS" | tr "\n" " ");do
-			echo "binary: $(basename $st)"
+			for st in $(echo "$BINS" | tr "\n" " ");do
+				echo "binary: $(basename $st)"
 		
-			TMP=$(ldd_check $st)
-			TMP=$(filter_arg_str $TMP)
-			for st1 in $TMP;do
-				TMPI="$(file_search $st1)"
-				if [[ "$TMPI" ]];then
-					if [[ "$PACKAGE_ONLY" == "1" ]];then
-						echo "$TMPI"
+				TMP=$(ldd_check $st)
+				for st1 in $TMP;do
+					TMPI="$(file_search $st1)"
+					if [[ "$TMPI" ]];then
+						if [[ "$PACKAGE_ONLY" == "1" ]];then
+							echo "$TMPI"
+						else
+							echo -e "\t$st1 --> $(echo "$TMPI" | sed ':a;N;$!ba;s/\n/ and /g')"
+						fi
 					else
-						echo -e "\t$st1 --> $(echo "$TMPI" | sed ':a;N;$!ba;s/\n/ and /g')"
+						echo -e "\t$st1 is not packages"
 					fi
-				else
-					echo -e "\t$st1 is not packages"
-				fi
+				done
 			done
-		done
+		fi
 	done
 	if [ "$NO_TIME" == "0" ];then
 		echo "Time: $(counting_time)"
 	fi
 }
+
+
+
 
 
 
