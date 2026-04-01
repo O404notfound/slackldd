@@ -19,11 +19,19 @@ SECONDS=0
 #repo
 PRIORITY=($(ls $WORKDIR/*-filelist.gz | xargs -n1 basename | sed 's/-filelist\.gz$//'))
 declare -A CACHED_LISTS
-RAM_DIR="/dev/shm/slackldd_cache_$$"
-declare -A LIB_TO_PKG_CACHE
+
+#tmp
+if [ -z "$RAM_CACHE" ]; then
+    if [ -d /dev/shm ] && [ -w /dev/shm ]; then
+        RAM_CACHE=/dev/shm/slackldd_cache_$$
+    else
+        RAM_CACHE=/tmp/slackldd_cache_$$
+    fi
+fi
+
 
 #exit
-trap "rm -rf $RAM_DIR" EXIT
+trap "rm -rf $RAM_CACHE" EXIT
 
 
 help(){
@@ -65,11 +73,11 @@ cutpkg(){
 
 
 preload_cache() {
-	mkdir -p "$RAM_DIR"
+	mkdir -p "$RAM_CACHE"
     for repo in "${PRIORITY[@]}"; do
         local FILELIST="${WORKDIR}/${repo}-filelist.gz"
         if [[ -f "$FILELIST" ]]; then
-            zcat "$FILELIST" > "$RAM_DIR/$repo"
+            zcat "$FILELIST" > "$RAM_CACHE/$repo"
         fi
     done
 }
@@ -84,7 +92,7 @@ file_search(){
     for i in "${PRIORITY[@]}"; do
         FILELIST="${WORKDIR}/${i}-filelist.gz"
         if [ -f "$FILELIST" ]; then
-	    PKGS=$(cat "$RAM_DIR/$i" | grep "$INPUTLIST" | awk '{print $1}' | xargs -r -n1 basename)
+	    PKGS=$(cat "$RAM_CACHE/$i" | grep "$INPUTLIST" | awk '{print $1}' | xargs -r -n1 basename)
             for FULLNAME in $PKGS ; do
                 NAME=$(cutpkg "$FULLNAME")
                 if ! grep -q "^${NAME}$" "$PKGNAMELIST"; then
@@ -138,7 +146,7 @@ find_package() {
 
         local NEXT_PENDING=()
         for st in "${PENDING[@]}"; do
-			if grep -qFm1 "$st" "$RAM_DIR/$i"; then
+			if grep -qFm1 "$st" "$RAM_CACHE/$i"; then
                 local ACTUAL_LOG=( "$PATH_PACKAGE/$st"-* )
                 if [[ -f "${ACTUAL_LOG[0]}" ]]; then
                     package+=("${ACTUAL_LOG[0]}") 
