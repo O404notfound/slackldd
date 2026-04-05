@@ -19,6 +19,7 @@ SECONDS=0
 #repo
 PRIORITY=($(ls $WORKDIR/*-filelist.gz | xargs -n1 basename | sed 's/-filelist\.gz$//'))
 declare -A CACHED_LISTS
+FILE_NAME=""
 
 #tmp
 if [ -z "$RAM_CACHE" ]; then
@@ -36,7 +37,7 @@ trap "rm -rf $RAM_CACHE" EXIT
 
 help(){
 	if [[ "$1" == "h" ]];then
-		echo "slackldd [-v] [-t] package"
+		echo "slackldd [-v] [-t] [-s] [-o filename] package"
 	elif [[ "$1" == "arg_error" ]];then
 		echo "invalid argument: $2"
 	elif [[ "$1" == "v" ]];then
@@ -97,10 +98,11 @@ file_search(){
                 NAME=$(cutpkg "$FULLNAME")
                 if ! grep -q "^${NAME}$" "$PKGNAMELIST"; then
 					echo "$NAME" >> "$PKGNAMELIST"
-					if [[ "$PACKAGE_ONLY" == "1" ]];then
+					if [[ "$PACKAGE_ONLY" == "1" ]] || [[ "$SORT_PACKAGES" == "1" ]];then
 						echo -e "${FULLNAME%.*}"
                     else
 						echo -e "${FULLNAME%.*} in $i"
+						PACKAGES_SORTS+=("${FULLNAME%.*}")
                     fi
                 fi
             done
@@ -180,6 +182,8 @@ filter_arg(){
 not_found_package=()
 package=()
 main_arg=()
+PACKAGES_SORTS=()
+EFI_NOT_FOUND=()
 main(){
 	shopt -s nullglob
 	preload_cache
@@ -194,8 +198,13 @@ main(){
 			help h
 		elif [[ "$tmp_main_arg" == "-v" ]];then
 			help v
+		elif [[ "$tmp_main_arg" == "-f" ]];then
+			FILE=1
+			continue
 		elif [[ "$tmp_main_arg" == "-t" ]];then
 			NO_TIME=1
+		elif [[ "$tmp_main_arg" == "-s" ]];then
+			SORT_PACKAGES=1
 		elif [[ "$tmp_main_arg" == "-p" ]];then
 			PACKAGE_ONLY=1
 			continue
@@ -205,7 +214,19 @@ main(){
 			fi
 			main_arg+=("$tmp_main_arg")
 		fi
+		
+		if [[ "$FILE" == "1" ]];then
+			FILE_NAME="$tmp_main_arg"
+			FILE=0
+			continue
+		elif [[ -v FILE_NAME ]];then
+			continue
+		else
+			help h
+		fi
+		
 	done
+	
 	filter_arg
 	
 	
@@ -222,12 +243,11 @@ main(){
 				echo "found package: $(basename $name)"
 			done
 			BINS=""
-			BIN=$(grep -E '^usr/(bin|sbin)/|^bin/|^sbin/' "$arg")
-			BINS=$(string_winding $BIN)
+			BINS=$(string_winding $(cat "$arg"))
 
 		
-			for st in $(echo "$BINS" | tr "\n" " ");do
-				[[ "$PACKAGE_ONLY" != "1" ]] && echo "binary: $(basename $st)"
+			for st in $BINS;do
+				if [[ "$PACKAGE_ONLY" != "1" ]] ; then echo "binary: $(basename "$st")";fi
 		
 				TMP=$(ldd_check $st)
 				for st1 in $TMP;do
@@ -235,17 +255,31 @@ main(){
 					if [[ "$TMPI" ]];then
 						if [[ "$PACKAGE_ONLY" == "1" ]];then
 							echo "$TMPI"
+							[[ -v FILE_NAME ]] && PACKAGES_SORTS+=("$TMPI")
+						elif [[ "$SORT_PACKAGES" == "1" ]];then
+							PACKAGES_SORTS+=("$TMPI")
+							printf "."
 						else
-							echo -e "\t$st1 --> $(echo "$TMPI" | sed ':a;N;$!ba;s/\n/ and /g')"
+							echo -e "\t$st1 --> $(echo "$TMPI" | paste -sd ' ' - | sed 's/ / and /g')"
+							[[ -v FILE_NAME ]] && PACKAGES_SORTS+=("$TMPI")
 						fi
 					else
-						[[ "$PACKAGE_ONLY" != "1" ]] && echo -e "\t$st1 is not packages"
+						if  [[ "$SORT_PACKAGES" == "1" ]] || [[ "$PACKAGE_ONLY" == "1" ]];then EFI_NOT_FOUND+=("$st1");
+						else  echo -e "\t$st1 is not packages";fi
 					fi
 				done
 			done
 		fi
 	done
-	[ "$NO_TIME" == "0" ] && echo "Time: $(counting_time)"
+	
+	if [[ -v FILE_NAME ]];then
+		printf "%s\n" "${PACKAGES_SORTS[@]}" | sort -u >> "$FILE_NAME"
+	else
+		[[ "$SORT_PACKAGES" == "1" ]] && printf "packages: " && printf "%s\n" "${PACKAGES_SORTS[@]}" | sort -u | xargs &&\
+		 printf "efi lib o bin not found: " && printf "%s\n" "${EFI_NOT_FOUND[@]}" | sort -u | xargs
+	fi
+	[[ "$NO_TIME" == "0" ]] && echo "Time: $(counting_time)"
+
 }
 
 
